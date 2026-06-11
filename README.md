@@ -48,9 +48,8 @@ supply-chain-analytics/
 │   ├── 02.analise_fornecedor.sql
 │   ├── 03.analise_atraso.sql
 │   ├── 04.analise_temporal.sql
-│   ├── 05.window_function.sql
-│   ├── conclusions_and_recommendations.md
-│   └── README.md
+│   ├── 05.window_function.sql 
+│   └── conclusions_and_recommendations.md
 │
 ├── procurement_analysis.xlsx
 ├── generate_dataset.py
