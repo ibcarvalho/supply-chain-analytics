@@ -1,0 +1,111 @@
+
+-- 05. WINDOW FUNCTIONS E ANÁLISE AVANÇADA
+-- Objetivo: demonstrar domínio de funções analíticas e classificações
+
+
+-- RANK: produtos mais vendidos por valor total
+SELECT
+    nome_produto,
+    SUM(valor_total) AS venda_total,
+    RANK() OVER (ORDER BY SUM(valor_total) DESC) AS ranking
+FROM "pedidos_compra.csv"
+GROUP BY nome_produto
+ORDER BY ranking;
+
+
+-- Classificação ABC de produtos
+-- Curva ABC: classe A = top 80% do valor, B = 80-95%, C = restante
+-- Demonstra uso de acumulado relativo com Window Functions
+WITH ranking AS (
+    SELECT
+        nome_produto,
+        SUM(valor_total) AS venda,
+        SUM(SUM(valor_total)) OVER () AS total_geral,
+        SUM(SUM(valor_total)) OVER (ORDER BY SUM(valor_total) DESC
+        ) AS acumulado
+    FROM "pedidos_compra.csv"
+    GROUP BY nome_produto
+)
+SELECT
+    nome_produto,
+    venda,
+    ROUND(100.0 * venda / total_geral, 1) AS pct_individual,
+    ROUND(100.0 * acumulado / total_geral, 1) AS pct_acumulado,
+    CASE
+        WHEN acumulado / total_geral <= 0.80 THEN 'A'
+        WHEN acumulado / total_geral <= 0.95 THEN 'B'
+        ELSE 'C'
+    END AS classe_abc
+FROM ranking
+ORDER BY venda DESC;
+
+
+-- % de participação total por categoria (share do gasto)
+-- SUM OVER () sem PARTITION BY divide pelo total geral
+SELECT
+    categoria,
+    SUM(valor_total) AS vendas,
+    ROUND(100.0 * SUM(valor_total)/ SUM(SUM(valor_total)) OVER (), 2
+    ) AS pct_total
+FROM "pedidos_compra.csv"
+GROUP BY categoria
+ORDER BY pct_total DESC;
+
+
+-- Contagem de pedidos por categoria com PARTITION BY
+-- Demonstra Window Function preservando linhas individuais
+SELECT DISTINCT
+    categoria,
+    COUNT(*) OVER (PARTITION BY categoria) AS total_pedidos
+FROM "pedidos_compra.csv"
+ORDER BY categoria;
+
+
+-- Ranking de fornecedores por volume de pedidos
+SELECT
+    nome_fornecedor,
+    COUNT(*) AS total_pedidos,
+    RANK() OVER (ORDER BY COUNT(*) DESC) AS ranking
+FROM "pedidos_compra.csv"
+GROUP BY nome_fornecedor
+ORDER BY ranking;
+
+
+-- Ticket médio por categoria com ranking
+SELECT
+    categoria,
+    COUNT(*) AS total_pedidos,
+    SUM(valor_total) AS valor_total,
+    ROUND(SUM(valor_total) / COUNT(*), 2) AS ticket_medio,
+    RANK() OVER (ORDER BY SUM(valor_total) / COUNT(*) DESC) AS rank_ticket
+FROM "pedidos_compra.csv"
+GROUP BY categoria
+ORDER BY rank_ticket;
+
+
+-- SLA: prazo contratado vs. lead time real com desvio
+-- Combina JOIN com Window Function para ranking de pior SLA
+WITH sla AS (
+    SELECT
+        pc.nome_fornecedor,
+        fc.prazo_entrega_dias AS prazo_contratado,
+        ROUND(AVG(pc.lead_time_real), 1) AS lead_time_medio,
+        ROUND(AVG(pc.lead_time_real)
+              - fc.prazo_entrega_dias, 1) AS desvio_medio,
+        ROUND(100.0 * SUM(CASE WHEN pc.dias_atraso > 0 THEN 1 ELSE 0 END) / COUNT(*), 1
+        ) AS pct_descumprimento
+    FROM "pedidos_compra.csv" AS pc
+    INNER JOIN "fornecedores.csv" AS fc
+        ON pc.id_fornecedor = fc.id_fornecedor
+    GROUP BY pc.nome_fornecedor, fc.prazo_entrega_dias
+)
+SELECT
+    nome_fornecedor,
+    prazo_contratado,
+    lead_time_medio,
+    desvio_medio,
+    pct_descumprimento,
+    RANK() OVER (ORDER BY desvio_medio DESC) AS rank_pior_sla
+FROM sla
+ORDER BY rank_pior_sla;
+

@@ -1,0 +1,98 @@
+
+-- 04. ANÁLISE TEMPORAL
+-- Objetivo: identificar padrões de compra ao longo do tempo
+
+
+-- Gasto total por mês com nome por extenso
+SELECT
+    CASE strftime('%m', data_solicitacao)
+        WHEN '01' THEN 'Janeiro'   WHEN '02' THEN 'Fevereiro'
+        WHEN '03' THEN 'Marco'     WHEN '04' THEN 'Abril'
+        WHEN '05' THEN 'Maio'      WHEN '06' THEN 'Junho'
+        WHEN '07' THEN 'Julho'     WHEN '08' THEN 'Agosto'
+        WHEN '09' THEN 'Setembro'  WHEN '10' THEN 'Outubro'
+        WHEN '11' THEN 'Novembro'  WHEN '12' THEN 'Dezembro'
+    END AS mes,
+    COUNT(*) AS total_pedidos,
+    SUM(valor_total) AS valor_total
+FROM "pedidos_compra.csv"
+GROUP BY strftime('%Y', data_solicitacao), strftime('%m', data_solicitacao);
+
+
+-- Valor total por categoria e trimestre
+SELECT
+    categoria,
+    trimestre,
+    SUM(valor_total) AS valor_total
+FROM "pedidos_compra.csv"
+GROUP BY categoria, trimestre
+ORDER BY categoria, trimestre;
+
+
+-- % de participação de cada categoria no gasto mensal
+-- Window Function: SUM OVER PARTITION BY divide o total por mês
+SELECT
+    strftime('%m', data_solicitacao) AS mes,
+    categoria,
+    SUM(valor_total) AS vendas,
+    ROUND(100.0 * SUM(valor_total) / SUM(SUM(valor_total)) OVER (PARTITION BY strftime('%m', data_solicitacao)), 2
+    ) AS pct_mes
+FROM "pedidos_compra.csv"
+GROUP BY mes, categoria
+ORDER BY mes, vendas DESC;
+
+
+-- Acumulado mensal com Running Total
+-- CTE + SUM OVER ORDER BY para calcular o total acumulado mês a mês
+WITH vendas_mes AS (
+    SELECT
+        strftime('%m', data_solicitacao) AS mes,
+        SUM(valor_total) AS vendas
+    FROM "pedidos_compra.csv"
+    GROUP BY mes
+)
+SELECT
+    mes,
+    vendas,
+    SUM(vendas) OVER (ORDER BY mes) AS acumulado
+FROM vendas_mes;
+
+
+-- Variação MoM (mês a mês) - Total geral
+-- LAG() busca o valor do mês anterior para calcular a diferença
+WITH vendas_mes AS (
+    SELECT
+        strftime('%m', data_solicitacao) AS mes,
+        SUM(valor_total)                 AS venda_total
+    FROM "pedidos_compra.csv"
+    GROUP BY mes
+)
+SELECT
+    mes,
+    venda_total,
+    LAG(venda_total) OVER (ORDER BY mes) AS mes_anterior,
+    venda_total - LAG(venda_total) OVER (ORDER BY mes) AS diferenca,
+    ROUND(100.0 * (venda_total - LAG(venda_total) OVER (ORDER BY mes)) / LAG(venda_total) OVER (ORDER BY mes), 1
+    ) AS variacao_pct
+FROM vendas_mes;
+
+
+-- Variação MoM por categoria
+-- LAG() PARTITION BY categoria - cada categoria tem sua própria linha do tempo
+WITH venda_mes_categoria AS (
+    SELECT
+        categoria,
+        strftime('%m', data_solicitacao) AS mes,
+        SUM(valor_total) AS vendas
+    FROM "pedidos_compra.csv"
+    GROUP BY categoria, mes
+)
+SELECT
+    categoria,
+    mes,
+    vendas,
+    LAG(vendas) OVER (PARTITION BY categoria ORDER BY mes)  AS venda_mes_anterior,
+    vendas - LAG(vendas) OVER (PARTITION BY categoria ORDER BY mes) AS diferenca
+FROM venda_mes_categoria
+ORDER BY categoria, mes;
+

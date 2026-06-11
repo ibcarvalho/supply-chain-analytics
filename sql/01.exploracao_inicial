@@ -1,0 +1,29 @@
+
+-- 01. EXPLORAÇÃO INICIAL
+-- Objetivo: entender a estrutura das tabelas e os dados disponíveis
+
+-- Visualizar todos os registros das tabelas base
+SELECT * FROM "fornecedores.csv";
+SELECT * FROM "pedidos_compra.csv";
+
+-- Contagem total de pedidos e fornecedores
+SELECT COUNT(*) AS total_pedidos FROM "pedidos_compra.csv";
+SELECT COUNT(*) AS total_fornecedores FROM "fornecedores.csv";
+
+-- Categorias únicas presentes na base
+SELECT DISTINCT categoria FROM "pedidos_compra.csv" ORDER BY categoria;
+
+-- Faixa de datas do dataset
+SELECT
+    MIN(data_solicitacao) AS data_inicio,
+    MAX(data_solicitacao) AS data_fim
+FROM "pedidos_compra.csv";
+
+-- Distribuição de status dos pedidos
+SELECT
+    status,
+    COUNT(*) AS total,
+    ROUND(100.0 * COUNT(*) / (SELECT COUNT(*) FROM "pedidos_compra.csv"), 1) AS pct
+FROM "pedidos_compra.csv"
+GROUP BY status;
+

@@ -1,0 +1,75 @@
+
+-- 02. ANÁLISE DE FORNECEDORES
+-- Objetivo: avaliar desempenho, volume e conformidade de cada fornecedor
+
+-- Visão geral: pedidos e valor total por fornecedor
+-- COALESCE garante que fornecedores sem pedido apareçam com 0
+SELECT
+    fc.nome_fornecedor,
+    fc.categoria,
+    fc.prazo_entrega_dias,
+    fc.avaliacao,
+    COUNT(pc.id_pedido) AS total_pedidos,
+    COALESCE(SUM(pc.valor_total), 0) AS valor_total,
+    COALESCE(ROUND(AVG(pc.lead_time_real), 2), 0) AS lead_time_medio,
+    COALESCE(ROUND(AVG(pc.dias_atraso), 2), 0) AS atraso_medio
+FROM "pedidos_compra.csv" AS pc
+FULL JOIN "fornecedores.csv" AS fc ON pc.id_fornecedor = fc.id_fornecedor
+GROUP BY fc.id_fornecedor, fc.nome_fornecedor
+ORDER BY valor_total DESC;
+
+
+-- Fornecedores SEM pedido no período
+-- Útil para identificar contratos inativos
+SELECT
+    fc.nome_fornecedor,
+    fc.categoria,
+    fc.contrato_ativo
+FROM "fornecedores.csv" AS fc
+LEFT JOIN "pedidos_compra.csv" AS pc ON fc.id_fornecedor = pc.id_fornecedor
+WHERE pc.id_pedido IS NULL;
+
+
+-- Taxa de atraso, lead time médio e % de atraso por fornecedor
+SELECT
+    nome_fornecedor,
+    COUNT(*) AS pedidos,
+    ROUND(AVG(lead_time_real), 2) AS lead_time_medio,
+    ROUND(AVG(dias_atraso), 2) AS atraso_medio,
+    ROUND(100.0 * SUM(
+    	CASE WHEN dias_atraso > 0 THEN 1 ELSE 0 END)/ COUNT(*), 2
+    ) AS pct_atraso
+FROM "pedidos_compra.csv"
+GROUP BY nome_fornecedor
+ORDER BY pct_atraso DESC;
+
+
+-- SLA: Comparação entre prazo contratado e lead time real
+-- Desvio positivo = fornecedor entregou além do prazo
+-- Desvio negativo = fornecedor entregou antes do prazo
+SELECT
+    pc.nome_fornecedor,
+    fc.prazo_entrega_dias AS prazo_contratado,
+    ROUND(AVG(pc.lead_time_real), 1) AS lead_time_medio,
+    ROUND(AVG(pc.lead_time_real)
+          - fc.prazo_entrega_dias, 1) AS desvio_medio,
+    ROUND(
+        100.0 * SUM(CASE WHEN pc.dias_atraso > 0 THEN 1 ELSE 0 END)
+        / COUNT(*), 1
+    ) AS pct_descumprimento_sla
+FROM "pedidos_compra.csv" AS pc
+INNER JOIN "fornecedores.csv" AS fc ON pc.id_fornecedor = fc.id_fornecedor
+GROUP BY pc.nome_fornecedor, fc.prazo_entrega_dias
+ORDER BY desvio_medio DESC;
+
+
+-- Ticket médio por fornecedor
+-- Valor médio gasto por pedido 
+SELECT
+    nome_fornecedor,
+    COUNT(*) AS total_pedidos,
+    SUM(valor_total) AS valor_total,
+    ROUND(SUM(valor_total) / COUNT(*), 2) AS ticket_medio
+FROM "pedidos_compra.csv"
+GROUP BY nome_fornecedor
+ORDER BY ticket_medio DESC;

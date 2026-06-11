@@ -1,0 +1,118 @@
+
+-- 03. ANÁLISE DE ATRASOS E SLA
+-- Objetivo: identificar padrões de atraso por categoria, faixa e semestre
+
+
+-- Contagem de pedidos atrasados vs. no prazo por categoria
+-- CASE WHEN para pivotear em uma única query
+SELECT
+    categoria,
+    SUM(CASE WHEN dias_atraso > 0 THEN 1 ELSE 0 END)  AS atrasados,
+    SUM(CASE WHEN dias_atraso = 0 THEN 1 ELSE 0 END)  AS no_prazo,
+    COUNT(*) AS total_entregas,
+    ROUND(100.0 * SUM(
+    	CASE WHEN dias_atraso > 0 THEN 1 ELSE 0 END)
+    	/ COUNT(*), 2
+    ) AS pct_atraso
+FROM "pedidos_compra.csv"
+GROUP BY categoria
+ORDER BY pct_atraso DESC;
+
+
+-- Classificação de atrasos em faixas (baixo / médio / crítico)
+-- CTE para organizar a lógica antes de classificar
+WITH classificados AS (
+    SELECT
+        categoria, nome_fornecedor,
+        CASE
+            WHEN dias_atraso = 0 THEN 'No prazo'
+            WHEN dias_atraso BETWEEN 1 AND 5  THEN 'Baixo (1-5d)'
+            WHEN dias_atraso BETWEEN 6 AND 10 THEN 'Medio (6-10d)'
+            ELSE 'Critico (+10d)'
+        END AS faixa_atraso
+    FROM "pedidos_compra.csv"
+)
+SELECT
+	nome_fornecedor,
+    categoria,
+    faixa_atraso,
+    COUNT(*) AS total
+FROM classificados
+GROUP BY categoria, faixa_atraso
+ORDER BY categoria, faixa_atraso;
+
+
+-- Pedidos atrasados e no prazo separados
+-- Uso de múltiplas CTEs com JOIN
+WITH pedidos_atrasados AS (
+    SELECT categoria, COUNT(*) AS atrasado
+    FROM "pedidos_compra.csv"
+    WHERE dias_atraso > 0
+    GROUP BY categoria
+),
+pedidos_no_prazo AS (
+    SELECT categoria, COUNT(*) AS no_prazo
+    FROM "pedidos_compra.csv"
+    WHERE dias_atraso = 0
+    GROUP BY categoria
+)
+SELECT
+    base.categoria,
+    a.atrasado,
+    n.no_prazo,
+    COUNT(*) AS total_entrega,
+    ROUND(COUNT(CASE WHEN dias_atraso > 0 THEN 1 END) * 100.0
+          / COUNT(*), 2) AS pct_atraso
+FROM "pedidos_compra.csv" base
+INNER JOIN pedidos_atrasados a ON base.categoria = a.categoria
+INNER JOIN pedidos_no_prazo  n ON base.categoria = n.categoria
+GROUP BY base.categoria
+ORDER BY pct_atraso DESC;
+
+
+-- Distribuição de atrasos por semestre
+-- Identifica se o problema de atraso piora em algum período do ano
+SELECT
+    semestre,
+    SUM(CASE WHEN dias_atraso = 0 THEN 1 ELSE 0 END) AS no_prazo,
+    SUM(CASE WHEN dias_atraso BETWEEN 1 AND 5  THEN 1 ELSE 0 END) AS baixo,
+    SUM(CASE WHEN dias_atraso BETWEEN 6 AND 10 THEN 1 ELSE 0 END) AS medio,
+    SUM(CASE WHEN dias_atraso > 10 THEN 1 ELSE 0 END) AS critico,
+    COUNT(*) AS total
+FROM "pedidos_compra.csv"
+GROUP BY semestre
+ORDER BY semestre;
+
+
+-- Data de entrega prevista vs. real
+SELECT 
+	nome_fornecedor,
+	COUNT(*) AS pedidos,
+	ROUND(AVG(
+		(STRFTIME('%s', data_entrega_real) - STRFTIME('%s', data_entrega_prevista)) 
+		/ 86400.0), 1) AS desvio_medio_dias,
+	SUM(CASE WHEN data_entrega_real <= data_entrega_prevista THEN 1 ELSE 0 END) AS entregas_no_prazo,
+	SUM(CASE WHEN data_entrega_real > data_entrega_prevista THEN 1 ELSE 0 END) AS entregas_atrasadas
+FROM "pedidos_compra.csv"
+WHERE data_entrega_real IS NOT NULL
+GROUP BY nome_fornecedor
+ORDER BY desvio_medio_dias DESC;
+
+-- Versão alternativa com desvio em horas
+SELECT 
+    nome_fornecedor,
+    COUNT(*) AS pedidos,
+    ROUND(AVG(
+        (STRFTIME('%s', data_entrega_real) - STRFTIME('%s', data_entrega_prevista)) 
+        / 86400.0), 2) AS desvio_medio_dias,
+    ROUND(AVG(
+        (STRFTIME('%s', data_entrega_real) - STRFTIME('%s', data_entrega_prevista)) 
+        / 3600.0), 1) || 'h' AS desvio_em_horas,
+    SUM(CASE WHEN data_entrega_real <= data_entrega_prevista THEN 1 ELSE 0 END) AS entregas_no_prazo,
+    SUM(CASE WHEN data_entrega_real > data_entrega_prevista THEN 1 ELSE 0 END) AS entregas_atrasadas
+FROM "pedidos_compra.csv"
+WHERE data_entrega_real IS NOT NULL
+GROUP BY nome_fornecedor
+ORDER BY desvio_medio_dias DESC;
+
+
